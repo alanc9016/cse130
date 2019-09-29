@@ -19,31 +19,26 @@ int main(int argc, char **argv){
 
 void readFiles(int argc, char **argv){
     for(int i = 1; i < argc; i++){
-        char buf[32] = "";
-        size_t nbytes;
+        char buffer[32] = "";
         int fd;
-        fd = open(argv[i],O_RDONLY);
+
+        fd = open(argv[i], O_RDONLY);
 
         if(fd == -1){
             fprintf(stderr,"open failed: %s\n", strerror(errno));
             exit(1);
         }
 
-        nbytes = sizeof(buf);
-        while(read(fd, buf, nbytes)){
-            nbytes = sizeof(buf);
-            write(1,buf,nbytes);
-        }
+        while(read(fd, buffer, 1))
+            write(1,buffer,1);
 
         close(fd);
     }
 }
 
 void readstdin(){
-    char ch[20];
+    char buffer[32];
 
-    while(read(STDIN_FILENO,ch, 1) > 0){
-        //TODO FIX Output
-        write(1,ch,20);
-    }
+    while(read(STDIN_FILENO,buffer, 1) > 0)
+        write(1,buffer,1);
 }
