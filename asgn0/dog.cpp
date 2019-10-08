@@ -19,12 +19,8 @@ void readstdin();
 int main(int argc, char **argv)
 {
     if(argc > 1)
-        if(strcmp("-", argv[1]) == 0)
-            // read from stdin if "-" is passed
-            readstdin();
-        else
-            // if arguments are passed, read files
-            readFiles(argc, argv);
+        // if arguments are passed
+        readFiles(argc, argv);
     // read from stdin if no args are passed
     else
         readstdin();
@@ -41,6 +37,13 @@ void readFiles(int argc, char **argv)
         char buffer[32];
         int fd;
 
+        // if '-' is passed called readstdin
+        if(strcmp(argv[i], "-") == 0) {
+            readstdin();
+            continue;
+        }
+
+        // used to check if it is a directory
         stat(argv[i], &path_stat);
 
         if(S_ISDIR(path_stat.st_mode)) {
