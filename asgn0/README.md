@@ -1,13 +1,13 @@
 # Assignment 0
 
 ##### Table of Contents  
-- [dog.c](#dog.c)
+- [dog.cpp](#dog.c)
 - [Makefile](#Makefile)
 - [DESIGN.pdf](#DESIGN)
 - [WRITEUP.pdf](#WRITEUP)
  
-<a name="dog.c"></a>
-### dog.c
+<a name="dog.cpp"></a>
+### dog.cpp
 - Implementation of the cat command 
 
 <a name="Makefile"></a>
