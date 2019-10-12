@@ -3,6 +3,8 @@
 ##### Table of Contents  
 - [dog.c](#dog.c)
 - [Makefile](#Makefile)
+- [DESIGN.pdf](#DESIGN)
+- [WRITEUP.pdf](#WRITEUP)
  
 <a name="dog.c"></a>
 ### dog.c
@@ -11,6 +13,14 @@
 <a name="Makefile"></a>
 ### Makefile
 - Will create an executable called dog includes a clean utility(spotless) that removes all object files, including dog. Also includes format that will format source code(format).
+
+<a name="DESIGN"></a>
+### DESIGN
+- Explains the design of my system.
+
+<a name="WRITEUP"></a>
+### WRITEUP
+- Contains my answers to the questions posed in the assignment.
 
 ## Instructions
 - make makes dog
