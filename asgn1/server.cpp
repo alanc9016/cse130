@@ -24,7 +24,6 @@ int main(int argc, char **argv){
     char* hostname;
     char* port;
     char* p = strtok(argv[1],":");
-    char http_header[1024]="HTTP/1.1 200 OK\r\n";
 
     hostname = p;
     p = strtok(NULL,":");
@@ -56,8 +55,8 @@ int main(int argc, char **argv){
         if(strcmp(request,"GET") == 0){
             memmove(fileName, fileName+1, strlen(fileName));
             readFile(fileName);
-            send(client_socket,strcat(readFile(fileName),http_header),
-                    sizeof(strcat(readFile(fileName),http_header)),1);
+            send(client_socket,strcat(readFile(fileName),""),
+                    strlen(strcat(readFile(fileName),"")),0);
         }
         else if(strcmp(request,"PUT") == 0){
         }
@@ -71,7 +70,7 @@ int main(int argc, char **argv){
 char* readFile(char fileName[]){
     struct stat path_stat;
 
-    char buffer[32000];
+    static char buffer[32000];
     int fd;
 
     // used to check if it is a directory
