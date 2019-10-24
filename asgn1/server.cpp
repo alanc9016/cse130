@@ -78,11 +78,9 @@ int main(int argc, char **argv) {
         i = atoi(word);
         recv(client_socket, buffer, 1024, 0);
         readFile(fileName, buffer, i, 0);
-        send(client_socket, "HTTP/1.1 200 OK\r\n",
-             strlen("HTTP/1.1 200 OK\r\n"), 0);
+        send(client_socket, "Content-Length: 0 HTTP/1.1 200 OK\r\n",
+             strlen("Content-Length: 0 HTTP/1.1 200 OK\r\n"), 0);
       }
-
-      close(client_socket);
     }
   }
   return 0;
@@ -111,7 +109,6 @@ char *readFile(char fileName[], char message[], int size, bool isGetRequest) {
       return nullptr;
     }
 
-    printf("%d",size);
     write(fd, message, size);
 
     close(fd);
