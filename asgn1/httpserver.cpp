@@ -64,9 +64,17 @@ int main(int argc, char **argv) {
       if (fileName[0] == '/')
         memmove(fileName, fileName + 1, strlen(fileName));
 
-      if (strcmp(request, "GET") == 0)
+      if (strcmp(request, "GET") == 0) {
+        if (isValidName(fileName) == -1) {
+          send(client_socket,
+               "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
+               strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
+               0);
+          continue;
+        }
+
         readFile(fileName, client_socket, true, 0);
-      else if (strcmp(request, "PUT") == 0) {
+      } else if (strcmp(request, "PUT") == 0) {
         if (isValidName(fileName) == -1) {
           send(client_socket,
                "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
@@ -89,7 +97,11 @@ int main(int argc, char **argv) {
         i = atoi(word);
 
         readFile(fileName, client_socket, false, i);
-      }
+      } else
+        send(client_socket, "HTTP/1.1 500 \r\nContent-Length: 0\r\n\r\n",
+             strlen("HTTP/1.1 500 Internal Server Error \r\nContent-Length: "
+                    "0\r\n\r\n"),
+             0);
     }
   }
 
@@ -131,8 +143,13 @@ void readFile(char fileName[], int socket, bool isGetRequest, int size) {
     fd = open(fileName, O_RDONLY);
 
     if (fd == -1) {
-      send(socket, "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
-           strlen("HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n"), 0);
+        if(access(fileName,F_OK) == -1)
+          send(socket, "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
+                  strlen("HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n"), 0);
+        else
+            send(socket, "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
+                    strlen("HTTP/1.1 404 Forbidden \r\nContent-Length: 0\r\n\r\n"), 0);
+
       return;
     }
 
@@ -147,21 +164,27 @@ void readFile(char fileName[], int socket, bool isGetRequest, int size) {
 
     while (read(fd, buffer, 1))
       send(socket, buffer, 1, 0);
+
+    close(fd);
   } else {
-    fd = open(fileName, O_CREAT | O_RDWR, 0644);
+    fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
 
     if (fd == -1) {
-      send(socket, "HTTP/1.1 500 \r\nContent-Length: 0\r\n\r\n",
-           strlen("HTTP/1.1 500 Internal Server Error \r\nContent-Length: "
+      send(socket, "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
+           strlen("HTTP/1.1 403 \r\nContent-Length: "
                   "0\r\n\r\n"),
            0);
       return;
     }
-    char *message;
-    message = (char*)malloc(size * sizeof(char)); 
-    read(socket, message, size);
-    write(fd, message, size);
-    free(message);
+    int i = 0;
+
+    while (i != size) {
+      read(socket, buffer, 1);
+      write(fd, buffer, 1);
+      i++;
+    }
+
+    close(fd);
 
     send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
          strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
