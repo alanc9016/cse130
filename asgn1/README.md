@@ -1,7 +1,7 @@
 # Assignment 1
 
 ##### Table of Contents  
-- [httpserver.cpp](#httpserver.c)
+- [httpserver.cpp](#httpserver.cpp)
 - [Makefile](#Makefile)
 - [DESIGN.pdf](#DESIGN)
 - [WRITEUP.pdf](#WRITEUP)
