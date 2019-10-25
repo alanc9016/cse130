@@ -5,6 +5,7 @@
  **********************************************/
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <err.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -17,6 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+int isValidName(char fileName[]);
 void readFile(char fileName[], int socket, bool isGetRequest, int size);
 
 int main(int argc, char **argv) {
@@ -63,16 +65,12 @@ int main(int argc, char **argv) {
       if (strcmp(request, "GET") == 0)
         readFile(fileName, client_socket, true, 0);
       else if (strcmp(request, "PUT") == 0) {
-        int fileNameLength;
         char *array[7];
         char word[20];
         int i = 0;
         char *line = strtok(buffer, "\r\n");
 
-        for (fileNameLength = 0; fileName[fileNameLength] != '\0';
-             ++fileNameLength)
-          printf("%d", fileNameLength);
-        if (fileNameLength != 27) {
+        if (isValidName(fileName) == -1){
           send(client_socket,
                "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
                strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
@@ -94,6 +92,32 @@ int main(int argc, char **argv) {
   }
 
   return 0;
+}
+
+int isValidName(char fileName[]){
+    int j;
+
+    for(j = 0; fileName[j] != '\0'; ++j);
+
+    if(j != 27)
+        return -1;
+
+    for(int i = 0; i < 27; i++){
+        char c = fileName[i];
+
+        if(isalpha(c))
+           continue;
+        if(isdigit(c))  
+            continue;
+        if(c=='-')
+            continue;
+        if(c=='_')
+            continue;
+
+        return -1;
+    }
+
+    return 0;
 }
 
 void readFile(char fileName[], int socket, bool isGetRequest, int size) {
