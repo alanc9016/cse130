@@ -1,7 +1,7 @@
 # Assignment 1
 
 ##### Table of Contents  
-- [httpserver.cpp](#dog.c)
+- [httpserver.cpp](#httpserver.c)
 - [Makefile](#Makefile)
 - [DESIGN.pdf](#DESIGN)
 - [WRITEUP.pdf](#WRITEUP)
@@ -12,7 +12,7 @@
 
 <a name="Makefile"></a>
 ### Makefile
-- Will create an executable called httpserver includes a clean utility(spotless) that removes all object files, including dog. Also includes format that will format source code(format).
+- Will create an executable called httpserver includes a clean utility(spotless) that removes all object files, including httpserver. Also includes format that will format source code(format).
 
 <a name="DESIGN"></a>
 ### DESIGN
