@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
     else
       strcpy(port, "80");
 
+    // Start of code obtained from Ethan Miller's Section
     struct addrinfo *addrs, hints = {};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -44,6 +45,7 @@ int main(int argc, char **argv) {
     bind(main_socket, addrs->ai_addr, addrs->ai_addrlen);
 
     listen(main_socket, 16);
+    // end of code obtained from Ethan Miller's section
 
     int client_socket;
 
@@ -65,18 +67,18 @@ int main(int argc, char **argv) {
       if (strcmp(request, "GET") == 0)
         readFile(fileName, client_socket, true, 0);
       else if (strcmp(request, "PUT") == 0) {
-        char *array[7];
-        char word[20];
-        int i = 0;
-        char *line = strtok(buffer, "\r\n");
-
-        if (isValidName(fileName) == -1){
+        if (isValidName(fileName) == -1) {
           send(client_socket,
                "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
                strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
                0);
           continue;
         }
+
+        char *line = strtok(buffer, "\r\n");
+        char *array[7];
+        char word[20];
+        int i = 0;
 
         while (line != nullptr) {
           array[i++] = line;
@@ -94,30 +96,31 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-int isValidName(char fileName[]){
-    int j;
+int isValidName(char fileName[]) {
+  int j;
 
-    for(j = 0; fileName[j] != '\0'; ++j);
+  for (j = 0; fileName[j] != '\0'; ++j)
+    ;
 
-    if(j != 27)
-        return -1;
+  if (j != 27)
+    return -1;
 
-    for(int i = 0; i < 27; i++){
-        char c = fileName[i];
+  for (int i = 0; i < 27; i++) {
+    char c = fileName[i];
 
-        if(isalpha(c))
-           continue;
-        if(isdigit(c))  
-            continue;
-        if(c=='-')
-            continue;
-        if(c=='_')
-            continue;
+    if (isalpha(c))
+      continue;
+    if (isdigit(c))
+      continue;
+    if (c == '-')
+      continue;
+    if (c == '_')
+      continue;
 
-        return -1;
-    }
+    return -1;
+  }
 
-    return 0;
+  return 0;
 }
 
 void readFile(char fileName[], int socket, bool isGetRequest, int size) {
@@ -142,10 +145,8 @@ void readFile(char fileName[], int socket, bool isGetRequest, int size) {
 
     send(socket, str, strlen(str), 0);
 
-    while (read(fd, buffer, 1)) {
-      size += 1;
+    while (read(fd, buffer, 1))
       send(socket, buffer, 1, 0);
-    }
   } else {
     fd = open(fileName, O_CREAT | O_RDWR, 0644);
 
@@ -156,9 +157,11 @@ void readFile(char fileName[], int socket, bool isGetRequest, int size) {
            0);
       return;
     }
-
-    recv(socket, buffer, 1024, 0);
-    write(fd, buffer, size);
+    char *message;
+    message = (char*)malloc(size * sizeof(char)); 
+    read(socket, message, size);
+    write(fd, message, size);
+    free(message);
 
     send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
          strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
