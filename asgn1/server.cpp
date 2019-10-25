@@ -13,10 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-char *readFile(char fileName[], char message[], int size, bool isGetRequest);
+void readFile(char fileName[], int socket, bool isGetRequest, int size);
 
 int main(int argc, char **argv) {
   char buffer[1024];
@@ -26,9 +27,9 @@ int main(int argc, char **argv) {
   if (argc > 1) {
     hostname = argv[1];
     if (argv[2] != nullptr)
-        strcpy(port, argv[2]);
+      strcpy(port, argv[2]);
     else
-        strcpy(port, "80");
+      strcpy(port, "80");
 
     struct addrinfo *addrs, hints = {};
     hints.ai_family = AF_INET;
@@ -43,10 +44,11 @@ int main(int argc, char **argv) {
     listen(main_socket, 16);
 
     int client_socket;
-    while (1) {
+
+    while (true) {
       memset(buffer, 0, 1024);
       char request[20];
-      char fileName[20];
+      char fileName[27];
 
       client_socket = accept(main_socket, NULL, NULL);
       recv(client_socket, buffer, 1024, 0);
@@ -57,62 +59,84 @@ int main(int argc, char **argv) {
 
       if (fileName[0] == '/')
         memmove(fileName, fileName + 1, strlen(fileName));
-      if (strcmp(request, "GET") == 0) {
-        if (readFile(fileName, nullptr, 0, 1) == nullptr) {
-          send(client_socket, "HTTP/1.1 404 Not Found\r\n",
-               strlen("HTTP/1.1 404 Not Found\r\n"), 0);
-        } else
-          send(client_socket, strcat(readFile(fileName, nullptr, 0, 1), ""),
-               strlen(strcat(readFile(fileName, nullptr, 0, 1), "")), 0);
-      } else if (strcmp(request, "PUT") == 0) {
+
+      if (strcmp(request, "GET") == 0)
+        readFile(fileName, client_socket, true, 0);
+      else if (strcmp(request, "PUT") == 0) {
+        int fileNameLength;
         char *array[7];
         char word[20];
         int i = 0;
         char *line = strtok(buffer, "\r\n");
 
+        for (fileNameLength = 0; fileName[fileNameLength] != '\0';
+             ++fileNameLength)
+          printf("%d", fileNameLength);
+        if (fileNameLength != 27) {
+          send(client_socket,
+               "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
+               strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
+               0);
+          continue;
+        }
+
         while (line != nullptr) {
           array[i++] = line;
           line = strtok(nullptr, "\r\n");
         }
+
         sscanf(array[4], "%*s %s", word);
         i = atoi(word);
-        recv(client_socket, buffer, 1024, 0);
-        readFile(fileName, buffer, i, 0);
-        send(client_socket, "Content-Length: 0 HTTP/1.1 200 OK\r\n",
-             strlen("Content-Length: 0 HTTP/1.1 200 OK\r\n"), 0);
+
+        readFile(fileName, client_socket, false, i);
       }
     }
   }
+
   return 0;
 }
 
-char *readFile(char fileName[], char message[], int size, bool isGetRequest) {
-  static char buffer[32000];
+void readFile(char fileName[], int socket, bool isGetRequest, int size) {
   int fd;
+  char buffer[32];
 
   if (isGetRequest) {
     fd = open(fileName, O_RDONLY);
 
     if (fd == -1) {
-      warn("%s", fileName);
-      return nullptr;
+      send(socket, "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
+           strlen("HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n"), 0);
+      return;
     }
 
-    read(fd, buffer, 32000);
+    struct stat st;
+    stat(fileName, &st);
+    size = st.st_size;
 
-    close(fd);
-    return buffer;
+    char str[1024];
+    sprintf(str, "HTTP/1.1 200 OK \r\nContent-Length: %d\r\n\r\n", size);
+
+    send(socket, str, strlen(str), 0);
+
+    while (read(fd, buffer, 1)) {
+      size += 1;
+      send(socket, buffer, 1, 0);
+    }
   } else {
     fd = open(fileName, O_CREAT | O_RDWR, 0644);
+
     if (fd == -1) {
-      warn("%s", fileName);
-      return nullptr;
+      send(socket, "HTTP/1.1 500 \r\nContent-Length: 0\r\n\r\n",
+           strlen("HTTP/1.1 500 Internal Server Error \r\nContent-Length: "
+                  "0\r\n\r\n"),
+           0);
+      return;
     }
 
-    write(fd, message, size);
+    recv(socket, buffer, 1024, 0);
+    write(fd, buffer, size);
 
-    close(fd);
+    send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
+         strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
   }
-
-  return nullptr;
 }
