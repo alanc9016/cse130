@@ -154,7 +154,9 @@ void processGet(char fileName[], int socket) {
   }
 
   struct stat st;
-  stat(fileName, &st);
+  if(stat(fileName, &st) == -1)
+      send(socket, errorCodes[3], strlen(errorCodes[3]), 0);
+
   int size = st.st_size;
 
   char str[1024];
