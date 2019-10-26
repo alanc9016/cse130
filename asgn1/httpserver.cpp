@@ -68,6 +68,9 @@ int main(int argc, char **argv) {
       sscanf(buffer, "%s %s", request, fileName);
       processOneRequest(fileName, request, client_socket, buffer);
     }
+  } else {
+    fprintf(stderr, "usage: ./httpserver localhost port");
+    return -1;
   }
 
   return 0;
@@ -154,8 +157,8 @@ void processGet(char fileName[], int socket) {
   }
 
   struct stat st;
-  if(stat(fileName, &st) == -1)
-      send(socket, errorCodes[3], strlen(errorCodes[3]), 0);
+  if (stat(fileName, &st) == -1)
+    send(socket, errorCodes[3], strlen(errorCodes[3]), 0);
 
   int size = st.st_size;
 
