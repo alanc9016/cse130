@@ -22,18 +22,20 @@ const char errorCodes[4][70] = {
     "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
     "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
     "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"};
+
 int isValidName(char fileName[]);
+void processOneRequest(char fileName[], char request[], int socket,
+                       char buffer[]);
 void processPut(char fileName[], int socket, int size);
 void processGet(char fileName[], int socket);
 
 int main(int argc, char **argv) {
-  char buffer[1024];
   char *hostname;
   char port[20];
 
   if (argc > 1) {
     hostname = argv[1];
-    if (argv[2] != nullptr)
+    if (argv[2] != NULL)
       strcpy(port, argv[2]);
     else
       strcpy(port, "80");
@@ -55,6 +57,7 @@ int main(int argc, char **argv) {
     int client_socket;
 
     while (true) {
+      char buffer[1024];
       memset(buffer, 0, 1024);
       char request[20];
       char fileName[27];
@@ -62,47 +65,50 @@ int main(int argc, char **argv) {
       client_socket = accept(main_socket, NULL, NULL);
       recv(client_socket, buffer, 1024, 0);
 
-      printf("%s", buffer);
-
       sscanf(buffer, "%s %s", request, fileName);
-
-      if (fileName[0] == '/')
-        memmove(fileName, fileName + 1, strlen(fileName));
-      if (isValidName(fileName) == -1) {
-        send(client_socket, errorCodes[0], strlen(errorCodes[0]), 0);
-        continue;
-      }
-
-      if (strcmp(request, "GET") == 0)
-        processGet(fileName, client_socket);
-      /* else if (strcmp(request, "PUT") == 0) { */
-      /*   char *line = strtok(buffer, "\r\n"); */
-      /*   char *array[7]; */
-      /*   char word[20]; */
-      /*   int i = 0; */
-      /*   int j = 0; */
-
-      /*   while (line != nullptr) { */
-      /*     array[i++] = line; */
-      /*     line = strtok(nullptr, "\r\n"); */
-      /*   } */
-
-      /*   for (j = 0; j < 6; j++) */
-      /*     if (strstr(array[j], "Content-Length: ") != nullptr) */
-      /*       break; */
-
-      /*   if (array[j] != nullptr){ */
-      /*       sscanf(array[j], "%*s %s", word); */
-      /*       i = atoi(word); */
-      /* } */
-
-      /*   processPut(fileName, client_socket, i); */
-      /* } else */
-      /*   send(client_socket, errorCodes[3], strlen(errorCodes[3]), 0); */
+      processOneRequest(fileName, request, client_socket, buffer);
     }
   }
 
-  /* return 0; */
+  return 0;
+}
+
+void processOneRequest(char fileName[], char request[], int socket,
+                       char buffer[]) {
+  if (fileName[0] == '/')
+    memmove(fileName, fileName + 1, strlen(fileName));
+  if (isValidName(fileName) == -1) {
+    send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
+    return;
+  }
+
+  if (strcmp(request, "GET") == 0)
+    processGet(fileName, socket);
+  else if (strcmp(request, "PUT") == 0) {
+    char *line = strtok(buffer, "\r\n");
+    char *array[7];
+    char word[20];
+    int i = 0;
+    int j = 0;
+
+    while (line != NULL) {
+      array[i++] = line;
+      line = strtok(NULL, "\r\n");
+    }
+
+    for (j = 0; j < 6; j++)
+      if (strstr(array[j], "Content-Length: ") != NULL)
+        break;
+
+    if (array[j] != NULL) {
+      sscanf(array[j], "%*s %s", word);
+      i = atoi(word);
+    } else
+      i = -1;
+
+    processPut(fileName, socket, i);
+  } else
+    send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
 }
 
 int isValidName(char fileName[]) {
@@ -137,7 +143,7 @@ void processGet(char fileName[], int socket) {
   char buffer[32];
 
   fd = open(fileName, O_RDONLY);
-  
+
   if (fd == -1) {
     if (access(fileName, F_OK) == -1)
       send(socket, errorCodes[2], strlen(errorCodes[2]), 0);
