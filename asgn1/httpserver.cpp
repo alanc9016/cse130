@@ -6,7 +6,6 @@
 
 #include <arpa/inet.h>
 #include <ctype.h>
-#include <err.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -18,8 +17,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+const char errorCodes[4][70] = {
+    "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"};
 int isValidName(char fileName[]);
-void readFile(char fileName[], int socket, bool isGetRequest, int size);
+void processPut(char fileName[], int socket, int size);
+void processGet(char fileName[], int socket);
 
 int main(int argc, char **argv) {
   char buffer[1024];
@@ -63,49 +68,41 @@ int main(int argc, char **argv) {
 
       if (fileName[0] == '/')
         memmove(fileName, fileName + 1, strlen(fileName));
+      if (isValidName(fileName) == -1) {
+        send(client_socket, errorCodes[0], strlen(errorCodes[0]), 0);
+        continue;
+      }
 
-      if (strcmp(request, "GET") == 0) {
-        if (isValidName(fileName) == -1) {
-          send(client_socket,
-               "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
-               strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
-               0);
-          continue;
-        }
+      if (strcmp(request, "GET") == 0)
+        processGet(fileName, client_socket);
+      /* else if (strcmp(request, "PUT") == 0) { */
+      /*   char *line = strtok(buffer, "\r\n"); */
+      /*   char *array[7]; */
+      /*   char word[20]; */
+      /*   int i = 0; */
+      /*   int j = 0; */
 
-        readFile(fileName, client_socket, true, 0);
-      } else if (strcmp(request, "PUT") == 0) {
-        if (isValidName(fileName) == -1) {
-          send(client_socket,
-               "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
-               strlen("HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n"),
-               0);
-          continue;
-        }
+      /*   while (line != nullptr) { */
+      /*     array[i++] = line; */
+      /*     line = strtok(nullptr, "\r\n"); */
+      /*   } */
 
-        char *line = strtok(buffer, "\r\n");
-        char *array[7];
-        char word[20];
-        int i = 0;
+      /*   for (j = 0; j < 6; j++) */
+      /*     if (strstr(array[j], "Content-Length: ") != nullptr) */
+      /*       break; */
 
-        while (line != nullptr) {
-          array[i++] = line;
-          line = strtok(nullptr, "\r\n");
-        }
+      /*   if (array[j] != nullptr){ */
+      /*       sscanf(array[j], "%*s %s", word); */
+      /*       i = atoi(word); */
+      /* } */
 
-        sscanf(array[4], "%*s %s", word);
-        i = atoi(word);
-
-        readFile(fileName, client_socket, false, i);
-      } else
-        send(client_socket, "HTTP/1.1 500 \r\nContent-Length: 0\r\n\r\n",
-             strlen("HTTP/1.1 500 Internal Server Error \r\nContent-Length: "
-                    "0\r\n\r\n"),
-             0);
+      /*   processPut(fileName, client_socket, i); */
+      /* } else */
+      /*   send(client_socket, errorCodes[3], strlen(errorCodes[3]), 0); */
     }
   }
 
-  return 0;
+  /* return 0; */
 }
 
 int isValidName(char fileName[]) {
@@ -135,58 +132,55 @@ int isValidName(char fileName[]) {
   return 0;
 }
 
-void readFile(char fileName[], int socket, bool isGetRequest, int size) {
+void processGet(char fileName[], int socket) {
   int fd;
   char buffer[32];
 
-  if (isGetRequest) {
-    fd = open(fileName, O_RDONLY);
+  fd = open(fileName, O_RDONLY);
+  
+  if (fd == -1) {
+    if (access(fileName, F_OK) == -1)
+      send(socket, errorCodes[2], strlen(errorCodes[2]), 0);
+    else
+      send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
 
-    if (fd == -1) {
-        if(access(fileName,F_OK) == -1)
-          send(socket, "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
-                  strlen("HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n"), 0);
-        else
-            send(socket, "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
-                    strlen("HTTP/1.1 404 Forbidden \r\nContent-Length: 0\r\n\r\n"), 0);
-
-      return;
-    }
-
-    struct stat st;
-    stat(fileName, &st);
-    size = st.st_size;
-
-    char str[1024];
-    sprintf(str, "HTTP/1.1 200 OK \r\nContent-Length: %d\r\n\r\n", size);
-
-    send(socket, str, strlen(str), 0);
-
-    while (read(fd, buffer, 1))
-      send(socket, buffer, 1, 0);
-
-    close(fd);
-  } else {
-    fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
-
-    if (fd == -1) {
-      send(socket, "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
-           strlen("HTTP/1.1 403 \r\nContent-Length: "
-                  "0\r\n\r\n"),
-           0);
-      return;
-    }
-    int i = 0;
-
-    while (i != size) {
-      read(socket, buffer, 1);
-      write(fd, buffer, 1);
-      i++;
-    }
-
-    close(fd);
-
-    send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
-         strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
+    return;
   }
+
+  struct stat st;
+  stat(fileName, &st);
+  int size = st.st_size;
+
+  char str[1024];
+  sprintf(str, "HTTP/1.1 200 OK \r\nContent-Length: %d\r\n\r\n", size);
+
+  send(socket, str, strlen(str), 0);
+
+  while (read(fd, buffer, 1))
+    send(socket, buffer, 1, 0);
+
+  close(fd);
+}
+
+void processPut(char fileName[], int socket, int size) {
+  int fd;
+  char buffer[32];
+  fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
+
+  if (fd == -1) {
+    send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
+    return;
+  }
+  int i = 0;
+
+  while (i != size) {
+    read(socket, buffer, 1);
+    write(fd, buffer, 1);
+    i++;
+  }
+
+  send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
+       strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
+
+  close(fd);
 }
