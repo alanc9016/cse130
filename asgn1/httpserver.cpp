@@ -17,15 +17,20 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+// HTTP Errror Codes
 const char errorCodes[4][70] = {
     "HTTP/1.1 400 Bad Request \r\nContent-Length: 0\r\n\r\n",
     "HTTP/1.1 403 Forbidden \r\nContent-Length: 0\r\n\r\n",
     "HTTP/1.1 404 Not Found \r\nContent-Length: 0\r\n\r\n",
     "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"};
 
+// Checks if file name is valid
 int isValidName(char fileName[]);
+
+// Sends requests to processPut, processGet otherwise error
 void processOneRequest(char fileName[], char request[], int socket,
                        char buffer[]);
+
 void processPut(char fileName[], int socket, int size);
 void processGet(char fileName[], int socket);
 
@@ -40,7 +45,7 @@ int main(int argc, char **argv) {
     else
       strcpy(port, "80");
 
-    // Start of code obtained from Ethan Miller's Section
+    // start of code obtained from Ethan Miller's Started Code
     struct addrinfo *addrs, hints = {};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -52,7 +57,7 @@ int main(int argc, char **argv) {
     bind(main_socket, addrs->ai_addr, addrs->ai_addrlen);
 
     listen(main_socket, 16);
-    // end of code obtained from Ethan Miller's section
+    // end of code obtained from Ethan Miller's Started Code
 
     int client_socket;
 
@@ -62,15 +67,18 @@ int main(int argc, char **argv) {
       char request[20];
       char fileName[27];
 
+      // accept new connection on socket
       client_socket = accept(main_socket, NULL, NULL);
       recv(client_socket, buffer, 1024, 0);
 
+      // extract request type and file name
       sscanf(buffer, "%s %s", request, fileName);
+
       processOneRequest(fileName, request, client_socket, buffer);
     }
   } else {
     fprintf(stderr, "usage: ./httpserver localhost port");
-    return -1;
+    return 1;
   }
 
   return 0;
@@ -78,8 +86,12 @@ int main(int argc, char **argv) {
 
 void processOneRequest(char fileName[], char request[], int socket,
                        char buffer[]) {
+
+  // ignore / on file name
   if (fileName[0] == '/')
     memmove(fileName, fileName + 1, strlen(fileName));
+
+  // invalid file name
   if (isValidName(fileName) == -1) {
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
     return;
@@ -103,14 +115,17 @@ void processOneRequest(char fileName[], char request[], int socket,
       if (strstr(array[j], "Content-Length: ") != NULL)
         break;
 
+    // found content-length
     if (array[j] != NULL) {
       sscanf(array[j], "%*s %s", word);
       i = atoi(word);
     } else
+      // set size -1 since no content-length was found
       i = -1;
 
     processPut(fileName, socket, i);
   } else
+    // invalid request
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
 }
 
@@ -148,9 +163,11 @@ void processGet(char fileName[], int socket) {
   fd = open(fileName, O_RDONLY);
 
   if (fd == -1) {
+    // file was not found
     if (access(fileName, F_OK) == -1)
       send(socket, errorCodes[2], strlen(errorCodes[2]), 0);
     else
+      // no read permission
       send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
 
     return;
@@ -158,6 +175,7 @@ void processGet(char fileName[], int socket) {
 
   struct stat st;
   if (stat(fileName, &st) == -1)
+    // unable to get size
     send(socket, errorCodes[3], strlen(errorCodes[3]), 0);
 
   int size = st.st_size;
@@ -165,8 +183,10 @@ void processGet(char fileName[], int socket) {
   char str[1024];
   sprintf(str, "HTTP/1.1 200 OK \r\nContent-Length: %d\r\n\r\n", size);
 
+  // send file size
   send(socket, str, strlen(str), 0);
 
+  // send file contents
   while (read(fd, buffer, 1))
     send(socket, buffer, 1, 0);
 
@@ -179,13 +199,15 @@ void processPut(char fileName[], int socket, int size) {
   fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
 
   if (fd == -1) {
+    // file is forbidden
     send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
     return;
   }
   int i = 0;
 
-  while (i != size) {
-    read(socket, buffer, 1);
+  // write contents until size specified and while
+  // there is still content
+  while (i != size && read(socket, buffer, 1)) {
     write(fd, buffer, 1);
     i++;
   }
