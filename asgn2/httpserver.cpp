@@ -37,48 +37,65 @@ void processGet(char fileName[], int socket);
 int main(int argc, char **argv) {
   char *hostname;
   char port[20];
+  char *l = NULL;
+  int N;
+  int option;
 
-  if (argc > 1) {
-    hostname = argv[1];
-    if (argv[2] != NULL)
-      strcpy(port, argv[2]);
-    else
-      strcpy(port, "80");
-
-    // start of code obtained from Ethan Miller's Started Code
-    struct addrinfo *addrs, hints = {};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    getaddrinfo(hostname, port, &hints, &addrs);
-    int main_socket =
-        socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
-    int enable = 1;
-    setsockopt(main_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
-    bind(main_socket, addrs->ai_addr, addrs->ai_addrlen);
-
-    listen(main_socket, 16);
-    // end of code obtained from Ethan Miller's Started Code
-
-    int client_socket;
-
-    while (true) {
-      char buffer[1024];
-      memset(buffer, 0, 1024);
-      char request[20];
-      char fileName[27];
-
-      // accept new connection on socket
-      client_socket = accept(main_socket, NULL, NULL);
-      recv(client_socket, buffer, 1024, 0);
-
-      // extract request type and file name
-      sscanf(buffer, "%s %s", request, fileName);
-
-      processOneRequest(fileName, request, client_socket, buffer);
+  while ((option = getopt(argc, argv, "N:l:")) != -1) {
+    switch (option) {
+    case 'N':
+      N = atoi(optarg);
+      break;
+    case 'l':
+      l = optarg;
+      break;
+    case ':':
+      printf("option needs a value\n");
+      break;
+    case '?':
+      printf("unknown option: %c\n", optopt);
+      break;
     }
+  }
+
+  if (l) {
+    hostname = argv[5];
+    strcpy(port, argv[6]);
   } else {
-    fprintf(stderr, "usage: ./httpserver localhost port");
-    return 1;
+    hostname = argv[3];
+    strcpy(port, argv[4]);
+  }
+
+  // start of code obtained from Ethan Miller's Started Code
+  struct addrinfo *addrs, hints = {};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  getaddrinfo(hostname, port, &hints, &addrs);
+  int main_socket =
+      socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
+  int enable = 1;
+  setsockopt(main_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+  bind(main_socket, addrs->ai_addr, addrs->ai_addrlen);
+
+  listen(main_socket, 16);
+  // end of code obtained from Ethan Miller's Started Code
+
+  int client_socket;
+
+  while (true) {
+    char buffer[1024];
+    memset(buffer, 0, 1024);
+    char request[20];
+    char fileName[27];
+
+    // accept new connection on socket
+    client_socket = accept(main_socket, NULL, NULL);
+    recv(client_socket, buffer, 1024, 0);
+
+    // extract request type and file name
+    sscanf(buffer, "%s %s", request, fileName);
+
+    processOneRequest(fileName, request, client_socket, buffer);
   }
 
   return 0;
