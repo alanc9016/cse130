@@ -16,6 +16,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <pthread.h>
+
+struct arg_struct{
+    char request[20];
+    char fileName[27];
+    char buffer[1024];
+    int socket;
+};
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -28,8 +36,7 @@ const char errorCodes[4][70] = {
 int isValidName(char fileName[]);
 
 // Sends requests to processPut, processGet otherwise error
-void processOneRequest(char fileName[], char request[], int socket,
-                       char buffer[]);
+void *processOneRequest(void *args);
 
 void processPut(char fileName[], int socket, int size);
 void processGet(char fileName[], int socket);
@@ -81,43 +88,40 @@ int main(int argc, char **argv) {
   // end of code obtained from Ethan Miller's Started Code
 
   int client_socket;
+  pthread_t worker_thread;
 
   while (true) {
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    char request[20];
-    char fileName[27];
-
-    // accept new connection on socket
+    struct arg_struct *args = (arg_struct*)calloc(1,sizeof(arg_struct));
     client_socket = accept(main_socket, NULL, NULL);
-    recv(client_socket, buffer, 1024, 0);
+    args->socket = client_socket;
 
-    // extract request type and file name
-    sscanf(buffer, "%s %s", request, fileName);
-
-    processOneRequest(fileName, request, client_socket, buffer);
+    pthread_create(&worker_thread,NULL,processOneRequest,args);
   }
 
   return 0;
 }
 
-void processOneRequest(char fileName[], char request[], int socket,
-                       char buffer[]) {
+void *processOneRequest(void *arguments){
+  struct arg_struct *args = (struct arg_struct*) arguments;
+  memset(args->buffer, 0, 1024);
+  
+  recv(args->socket, args->buffer, 1024, 0);
+  sscanf(args->buffer, "%s %s", args->request, args->fileName);
 
   // ignore / on file name
-  if (fileName[0] == '/')
-    memmove(fileName, fileName + 1, strlen(fileName));
+  /* if (args->fileName[0] == '/') */
+  /*   memmove(args->fileName, args->fileName + 1, strlen(args->fileName)); */
 
   // invalid file name
-  if (isValidName(fileName) == -1) {
-    send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
-    return;
-  }
+  /* if (isValidName(args->fileName) == -1) { */
+  /*   send(args->socket, errorCodes[0], strlen(errorCodes[0]), 0); */
+  /*   pthread_exit(NULL); */
+  /* } */
 
-  if (strcmp(request, "GET") == 0)
-    processGet(fileName, socket);
-  else if (strcmp(request, "PUT") == 0) {
-    char *line = strtok(buffer, "\r\n");
+  if (strcmp(args->request, "GET") == 0)
+      processGet(args->fileName, args->socket);
+  else if (strcmp(args->request, "PUT") == 0) {
+    char *line = strtok(args->buffer, "\r\n");
     char *array[7];
     char word[20];
     int i = 0;
@@ -140,10 +144,12 @@ void processOneRequest(char fileName[], char request[], int socket,
       // set size -1 since no content-length was found
       i = -1;
 
-    processPut(fileName, socket, i);
-  } else
-    // invalid request
-    send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
+    processPut(args->fileName, args->socket, i);
+  } else{
+      send(args->socket, errorCodes[0], strlen(errorCodes[0]), 0);
+  }
+  
+  return NULL;
 }
 
 int isValidName(char fileName[]) {
