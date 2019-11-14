@@ -88,10 +88,12 @@ int main(int argc, char **argv) {
 
   listen(main_socket, 16);
   // end of code obtained from Ethan Miller's Started Code
-  
+
   while (true) {
     pthread_mutex_lock(&mutex);
+    
     CLIENT_SOCKET = accept(main_socket, NULL, NULL);
+
     pthread_cond_signal(&condition);
   }
 
@@ -99,13 +101,17 @@ int main(int argc, char **argv) {
 }
 
 void *start(void *) {
-  pthread_mutex_lock(&mutex1);
   while (true) {
-    pthread_cond_wait(&condition, &mutex1);
-    processOneRequest(CLIENT_SOCKET);
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_lock(&mutex1);
+    int rc = pthread_cond_wait(&condition, &mutex1);
+    if (rc == 0) {
+      int socket = CLIENT_SOCKET;
+      pthread_mutex_unlock(&mutex);
+      pthread_mutex_unlock(&mutex1);
+      processOneRequest(socket);
+    }
   }
-  pthread_mutex_unlock(&mutex1);
+
   return NULL;
 }
 
@@ -128,9 +134,9 @@ void processOneRequest(int socket) {
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
   }
 
-  if (strcmp(request, "GET") == 0)
+  if (strcmp(request, "GET") == 0) {
     processGet(fileName, socket);
-  else if (strcmp(request, "PUT") == 0) {
+  } else if (strcmp(request, "PUT") == 0) {
     char *line = strtok(buffer, "\r\n");
     char *array[7];
     char word[20];
@@ -187,7 +193,7 @@ int isValidName(char fileName[]) {
   return 0;
 }
 
-void processGet(char fileName[], int socket) { 
+void processGet(char fileName[], int socket) {
   int fd;
   char buffer[32];
 
