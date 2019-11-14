@@ -18,14 +18,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-int N;
-pthread_mutex_t *mutexes;
 pthread_t *threads;
-pthread_cond_t *condtions;
-int *sockets;
-
-pthread_cond_t condtion = PTHREAD_COND_INITIALIZER;
+pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+int CLIENT_SOCKET;
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -48,8 +45,8 @@ void processGet(char fileName[], int socket);
 int main(int argc, char **argv) {
   char *hostname;
   char port[20];
-  char *l = NULL;
-  N = 4;
+  char *l;
+  int N = 4;
   int option;
 
   while ((option = getopt(argc, argv, "N:l:")) != -1) {
@@ -73,14 +70,9 @@ int main(int argc, char **argv) {
   strcpy(port, argv[argc - 1]);
 
   threads = new pthread_t[N];
-  mutexes = new pthread_mutex_t[N];
-  condtions = new pthread_cond_t[N];
-  sockets = new int[N];
 
   for (int i = 0; i < N; i++) {
-    sockets[i] = 0;
-    pthread_create(&threads[i], NULL, start, (void*)&i);
-    sleep(1);
+    pthread_create(&threads[i], NULL, start, NULL);
   }
 
   // start of code obtained from Ethan Miller's Started Code
@@ -96,40 +88,24 @@ int main(int argc, char **argv) {
 
   listen(main_socket, 16);
   // end of code obtained from Ethan Miller's Started Code
-
+  
   while (true) {
-    int i = 0;
-    pthread_mutex_lock(&mutexes[i]);
-    int client_socket = accept(main_socket, NULL, NULL);
-    sockets[i] = client_socket;
-    pthread_cond_signal (&condtions[i]);
-    pthread_mutex_unlock(&mutexes[i]);
-    if(i >= N)
-        i = 0;
+    pthread_mutex_lock(&mutex);
+    CLIENT_SOCKET = accept(main_socket, NULL, NULL);
+    pthread_cond_signal(&condition);
   }
 
   return 0;
 }
 
-void *start(void *i) {
-  int thread = *(int*)i;
-  pthread_mutex_lock(&mutexes[thread]);
-
+void *start(void *) {
+  pthread_mutex_lock(&mutex1);
   while (true) {
-    pthread_cond_wait(&condtions[thread],&mutexes[thread]);
-    int k = 0;
-    printf("%d",sockets[k]);
-    if(sockets[k] != 0){
-        processOneRequest(sockets[k]);
-        sockets[k] = 0;
-    }
-
-    if(k >= N)
-        k = 0;
+    pthread_cond_wait(&condition, &mutex1);
+    processOneRequest(CLIENT_SOCKET);
+    pthread_mutex_unlock(&mutex);
   }
-
-  pthread_mutex_unlock(&mutexes[thread]);
-
+  pthread_mutex_unlock(&mutex1);
   return NULL;
 }
 
@@ -211,7 +187,7 @@ int isValidName(char fileName[]) {
   return 0;
 }
 
-void processGet(char fileName[], int socket) {
+void processGet(char fileName[], int socket) { 
   int fd;
   char buffer[32];
 
