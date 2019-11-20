@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,10 +20,14 @@
 #include <unistd.h>
 
 pthread_t *threads;
-pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-int CLIENT_SOCKET;
+
+sem_t empty;
+sem_t full;
+sem_t mutex;
+
+int SHARED_RESOURCE;
+
+char *LOGFILE;
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -45,7 +50,6 @@ void processGet(char fileName[], int socket);
 int main(int argc, char **argv) {
   char *hostname;
   char port[20];
-  char *l;
   int N = 4;
   int option;
 
@@ -55,7 +59,7 @@ int main(int argc, char **argv) {
       N = atoi(optarg);
       break;
     case 'l':
-      l = optarg;
+      LOGFILE = optarg;
       break;
     case ':':
       printf("option needs a value\n");
@@ -70,6 +74,10 @@ int main(int argc, char **argv) {
   strcpy(port, argv[argc - 1]);
 
   threads = new pthread_t[N];
+
+  sem_init(&mutex, 0, 1);
+  sem_init(&full, 0, 0);
+  sem_init(&empty, 0, N);
 
   for (int i = 0; i < N; i++) {
     pthread_create(&threads[i], NULL, start, NULL);
@@ -90,11 +98,15 @@ int main(int argc, char **argv) {
   // end of code obtained from Ethan Miller's Started Code
 
   while (true) {
-    pthread_mutex_lock(&mutex);
-    
-    CLIENT_SOCKET = accept(main_socket, NULL, NULL);
+    int client_socket = accept(main_socket, NULL, NULL);
 
-    pthread_cond_signal(&condition);
+    sem_wait(&empty);
+    sem_wait(&mutex);
+
+    SHARED_RESOURCE = client_socket;
+
+    sem_post(&mutex);
+    sem_post(&full);
   }
 
   return 0;
@@ -102,14 +114,15 @@ int main(int argc, char **argv) {
 
 void *start(void *) {
   while (true) {
-    pthread_mutex_lock(&mutex1);
-    int rc = pthread_cond_wait(&condition, &mutex1);
-    if (rc == 0) {
-      int socket = CLIENT_SOCKET;
-      pthread_mutex_unlock(&mutex);
-      pthread_mutex_unlock(&mutex1);
-      processOneRequest(socket);
-    }
+    sem_wait(&full);
+    sem_wait(&mutex);
+
+    int client_socket = SHARED_RESOURCE;
+
+    sem_post(&mutex);
+    sem_post(&empty);
+
+    processOneRequest(client_socket);
   }
 
   return NULL;
@@ -240,17 +253,44 @@ void processPut(char fileName[], int socket, int size) {
     send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
     return;
   }
+
   int i = 0;
 
   // write contents until size specified and while
   // there is still content
   while (i != size && read(socket, buffer, 1)) {
     write(fd, buffer, 1);
+
     i++;
+  }
+
+  close(fd);
+
+  if (LOGFILE) {
+    int fd_log = 0;
+    fd = open(fileName, O_RDWR);
+    fd_log = open(LOGFILE, O_CREAT | O_RDWR, 0644);
+    char buffer_log[20];
+    int address = 0;
+    char* target = new char[20];
+    
+    int lineLength = sprintf(buffer_log, "PUT %s length %d\n", fileName, size);
+    write(fd_log, buffer_log, lineLength);
+
+    while(read(fd, buffer_log, 20)){
+        for(int j = 0; j < 20; j++){
+            target += sprintf(target, "%08x ", address);
+            target += sprintf(target, "%02x ", (unsigned int) buffer_log[j]);
+        }
+        target += sprintf(target, "\n");
+        write(fd_log, target, strlen(target));
+        address+=20;
+    }
+
+    /*   sprintf(buffer_log, "%08x %02x", address, (unsigned int)*buffer); */
   }
 
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
 
-  close(fd);
 }
