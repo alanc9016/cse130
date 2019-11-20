@@ -24,10 +24,13 @@ pthread_t *threads;
 sem_t empty;
 sem_t full;
 sem_t mutex;
+sem_t logMutex;
 
 int SHARED_RESOURCE;
 
 char *LOGFILE;
+int GLOBAL_OFFSET = 0;
+int FD_LOG = 0;
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -78,6 +81,7 @@ int main(int argc, char **argv) {
   sem_init(&mutex, 0, 1);
   sem_init(&full, 0, 0);
   sem_init(&empty, 0, N);
+  sem_init(&logMutex, 0, 1);
 
   for (int i = 0; i < N; i++) {
     pthread_create(&threads[i], NULL, start, NULL);
@@ -175,6 +179,17 @@ void processOneRequest(int socket) {
 
     processPut(fileName, socket, i);
   } else {
+    if(LOGFILE){
+        /* char buffer_log[100]; */
+        /* int lineLength = sprintf(buffer_log, "%s %s %s ---response 400\n=========\n", req,filename,http,400); */
+        /* sem_wait(&logMutex); */
+
+        /* pwrite(FD_LOG, buffer_log, lineLength, localOffset); */
+        /* GLOBAL_OFFSET+=localOffset; */
+
+        /* sem_post(&logMutex); */
+
+    }
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
   }
 }
@@ -267,30 +282,42 @@ void processPut(char fileName[], int socket, int size) {
   close(fd);
 
   if (LOGFILE) {
-    int fd_log = 0;
     fd = open(fileName, O_RDWR);
-    fd_log = open(LOGFILE, O_CREAT | O_RDWR, 0644);
-    char buffer_log[20];
+    FD_LOG = open(LOGFILE, O_CREAT | O_RDWR, 0644);
+    char buffer_log[100];
     int address = 0;
-    char* target = new char[20];
+    char* target = (char*)malloc(100);
+    int length = 0;
     
     int lineLength = sprintf(buffer_log, "PUT %s length %d\n", fileName, size);
-    write(fd_log, buffer_log, lineLength);
 
-    while(read(fd, buffer_log, 20)){
-        for(int j = 0; j < 20; j++){
-            target += sprintf(target, "%08x ", address);
-            target += sprintf(target, "%02x ", (unsigned int) buffer_log[j]);
+    sem_wait(&logMutex);
+
+    int localOffset = GLOBAL_OFFSET;
+    pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+    localOffset+= lineLength;
+
+    while(int k= read(fd, buffer_log, 20)){
+        length += sprintf(target+length, "%08d ", address);
+
+        for(int j = 0; j < k; j++){
+            length += sprintf(target+length, "%02x ",
+                    (unsigned int) buffer_log[j]);
         }
-        target += sprintf(target, "\n");
-        write(fd_log, target, strlen(target));
+
+        length += sprintf(target+length, "\n");
+        localOffset+= pwrite(FD_LOG, target, strlen(target), length+localOffset);
+        localOffset+=length;
+        length = 0;
         address+=20;
     }
 
-    /*   sprintf(buffer_log, "%08x %02x", address, (unsigned int)*buffer); */
+    localOffset+=pwrite(FD_LOG, "========\n", 9, localOffset);
+    GLOBAL_OFFSET+= localOffset;
+
+    sem_post(&logMutex);
   }
 
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
-
 }
