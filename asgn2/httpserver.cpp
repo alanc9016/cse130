@@ -152,12 +152,14 @@ void processOneRequest(int socket) {
       if (LOGFILE) {
           char buffer_log[100];
           sem_wait(&logMutex);
+          
+          int localOffset = GLOBAL_OFFSET;
           int lineLength = sprintf(buffer_log, "FAIL: %s %s HTTP --- response 400\n=========\n",
                   request, fileName);
 
-      int localOffset = lineLength;
-
+      localOffset+= lineLength;
       localOffset += pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+
       GLOBAL_OFFSET += localOffset;
 
       sem_post(&logMutex);
@@ -197,13 +199,14 @@ void processOneRequest(int socket) {
     if (LOGFILE) {
       char buffer_log[100];
       sem_wait(&logMutex);
+      int localOffset = GLOBAL_OFFSET;
       int lineLength =
           sprintf(buffer_log, "FAIL: %s %s HTTP --- response 400\n=========\n",
                   request, fileName);
 
-      int localOffset = lineLength;
-
+      localOffset+= lineLength;
       localOffset += pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+
       GLOBAL_OFFSET += localOffset;
 
       sem_post(&logMutex);
@@ -297,11 +300,14 @@ void processGet(char fileName[], int socket) {
 
   if(LOGFILE){
       char buffer_log[100];
+
       sem_wait(&logMutex);
+      int localOffset = GLOBAL_OFFSET;
 
       int lineLength = sprintf(buffer_log, "GET %s length 0\n========\n", fileName);
-      int localOffset = GLOBAL_OFFSET;
-      pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+      localOffset+= lineLength;
+      localOffset+= pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+
       GLOBAL_OFFSET += localOffset;
 
       sem_post(&logMutex);
@@ -331,12 +337,13 @@ void processPut(char fileName[], int socket, int size) {
       char buffer_log[100];
 
       sem_wait(&logMutex);
+      int localOffset = GLOBAL_OFFSET;
 
       int lineLength =
           sprintf(buffer_log, "FAIL: PUT %s HTTP --- response 403\n========\n",
                   fileName);
 
-      int localOffset = lineLength;
+      localOffset += lineLength;
       localOffset += pwrite(FD_LOG, buffer_log, lineLength, localOffset);
       GLOBAL_OFFSET += localOffset;
 
