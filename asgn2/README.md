@@ -29,10 +29,6 @@
 - make format runs clang-format on source files
 - ./httpserver -N 8 -l my_log.txt localhost 8888
 
-## Known Issues
-- For an unknown reason there must be more threads available than request, otherwise the server exits, or some requests stall.
-- If the server exits or a request stalls, please try again, the program works the majority of the time, but there are rare cases when it does not.
-
 ## Author
 - **Alan Caro** 
 

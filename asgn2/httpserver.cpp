@@ -18,19 +18,21 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <queue>
 
-pthread_t *threads;
+pthread_t *THREADS;
+std::queue<int> MYQUEUE;
 
-sem_t empty;
-sem_t full;
 sem_t mutex;
+sem_t full;
+sem_t empty;
 sem_t logMutex;
-
-int SHARED_RESOURCE;
 
 char *LOGFILE;
 int GLOBAL_OFFSET = 0;
 int FD_LOG = 0;
+
+void printLog(char message[],char fileName[], char request[], int errorCode);
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -79,15 +81,15 @@ int main(int argc, char **argv) {
   if (LOGFILE)
     FD_LOG = open(LOGFILE, O_CREAT | O_RDWR | O_TRUNC, 0644);
 
-  threads = new pthread_t[N];
+  THREADS = new pthread_t[N];
 
-  sem_init(&mutex, 0, 1);
-  sem_init(&full, 0, 0);
-  sem_init(&empty, 0, N);
-  sem_init(&logMutex, 0, 1);
+  sem_init(&logMutex,0,1);
+  sem_init(&mutex,0,1);
+  sem_init(&full,0,0);
+  sem_init(&empty,0,N);
 
   for (int i = 0; i < N; i++) {
-    pthread_create(&threads[i], NULL, start, NULL);
+    pthread_create(&THREADS[i], NULL, start, NULL);
   }
 
   // start of code obtained from Ethan Miller's Started Code
@@ -106,11 +108,10 @@ int main(int argc, char **argv) {
 
   while (true) {
     int client_socket = accept(main_socket, NULL, NULL);
-
     sem_wait(&empty);
     sem_wait(&mutex);
 
-    SHARED_RESOURCE = client_socket;
+    MYQUEUE.push(client_socket);
 
     sem_post(&mutex);
     sem_post(&full);
@@ -124,7 +125,8 @@ void *start(void *) {
     sem_wait(&full);
     sem_wait(&mutex);
 
-    int client_socket = SHARED_RESOURCE;
+    int client_socket = MYQUEUE.front();
+    MYQUEUE.pop();
 
     sem_post(&mutex);
     sem_post(&empty);
@@ -406,3 +408,13 @@ void processPut(char fileName[], int socket, int size) {
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
 }
+
+/* void printLog(char message[],char fileName[], char request[], int errorCode){ */
+    /* char buffer_log[100]; */
+
+    /* sem_wait(&logMutex); */
+    
+    /* int localOffset = GLOBAL_OFFSET; */
+    /* int lineLength = sprintf */
+
+/* } */
