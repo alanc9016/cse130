@@ -106,7 +106,6 @@ int main(int argc, char **argv) {
 
   while (true) {
     int client_socket = accept(main_socket, NULL, NULL);
-    printf("socket: %d\n", client_socket);
 
     sem_wait(&empty);
     sem_wait(&mutex);
