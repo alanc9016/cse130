@@ -321,16 +321,17 @@ void processPut(char fileName[], int socket, int size) {
 
   if (LOGFILE) {
     fd = open(fileName, O_RDWR);
-    char buffer_log[100];
     int address = 0;
     char *target = (char *)malloc(100);
     int length = 0;
+    char buffer_log1[100];
+    uint8_t buffer_log[100];
 
     sem_wait(&logMutex);
 
-    int lineLength = sprintf(buffer_log, "PUT %s length %d\n", fileName, size);
+    int lineLength = sprintf(buffer_log1, "PUT %s length %d\n", fileName, size);
     int localOffset = GLOBAL_OFFSET;
-    pwrite(FD_LOG, buffer_log, lineLength, localOffset);
+    pwrite(FD_LOG, buffer_log1, lineLength, localOffset);
     localOffset += lineLength;
 
     while (int k = read(fd, buffer_log, 20)) {
