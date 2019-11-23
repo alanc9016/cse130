@@ -48,7 +48,7 @@ void *start(void *);
 // Sends requests to processPut, processGet otherwise error
 void processOneRequest(int socket);
 
-void processPut(char fileName[], int socket, int size, int localOffset);
+void processPut(char fileName[], int socket, int size);
 void processGet(char fileName[], int socket);
 
 int main(int argc, char **argv) {
@@ -146,11 +146,16 @@ void processOneRequest(int socket) {
   // invalid file name
   if (isValidName(fileName) == -1) {
     if (LOGFILE) {
-      char *message;
-      asprintf(&message, "FAIL: %s %s HTTP --- response 400\n=========\n",
-               request, fileName);
-      /* printLog(message); */
-      free(message);
+        sem_wait(&logMutex);
+
+        int localOffset = GLOBAL_OFFSET;
+        char message[100];
+        sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n",
+                request, fileName);
+        GLOBAL_OFFSET+= strlen(message);
+
+        sem_post(&logMutex);
+        printLog(message, localOffset);
     }
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
     return;
@@ -182,25 +187,20 @@ void processOneRequest(int socket) {
       // set size -1 since no content-length was found
       i = -1;
 
-    printf("size: %d\n", i);
-    printf("header size: %d\n", strlen(buffer));
-    printf("lines: %d\n", ((i/20) + ((i % 20)!=0)));
 
-    sem_wait(&logMutex);
-    int localOffset = GLOBAL_OFFSET;
-    GLOBAL_OFFSET += (i * 3) + 9 + ((i/20) + ((i%20)!=0))*9+ strlen(buffer);
-    printf("Global: %d\n", GLOBAL_OFFSET);
-    printf("Local: %d\n\n", localOffset);
-    sem_post(&logMutex);
-
-    processPut(fileName, socket, i, localOffset);
+    processPut(fileName, socket, i);
   } else {
     if (LOGFILE) {
-      char *message;
-      asprintf(&message, "FAIL: %s %s HTTP --- response 400\n=========\n",
-               request, fileName);
-      /* printLog(message); */
-      free(message);
+        sem_wait(&logMutex);
+
+        int localOffset = GLOBAL_OFFSET;
+        char message[100];
+        sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n", 
+                request, fileName);
+        GLOBAL_OFFSET+= strlen(message);
+
+        sem_post(&logMutex);
+        printLog(message, localOffset);
     }
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
   }
@@ -233,7 +233,7 @@ int isValidName(char fileName[]) {
   return 0;
 }
 
-void processGet(char fileName[], int socket) {
+void processGet(char fileName[], int socket){
   int fd;
   char buffer[32];
 
@@ -243,22 +243,34 @@ void processGet(char fileName[], int socket) {
     // file was not found
     if (access(fileName, F_OK) == -1) {
       if (LOGFILE) {
-        char *message;
-        asprintf(&message, "FAIL: GET %s HTTP --- response 404\n========\n",
+        sem_wait(&logMutex);
+
+        int localOffset = GLOBAL_OFFSET;
+        char message[100];
+        sprintf(message, "FAIL: GET %s HTTP --- response 404\n========\n",
                  fileName);
-        /* printLog(message); */
-        free(message);
+        GLOBAL_OFFSET+= strlen(message);
+
+        sem_post(&logMutex);
+
+        localOffset+=printLog(message,localOffset);
       }
 
       send(socket, errorCodes[2], strlen(errorCodes[2]), 0);
     } else {
       // no read permission
       if (LOGFILE) {
-        char *message;
-        asprintf(&message, "FAIL: GET %s HTTP --- response 403\n========\n",
+        sem_wait(&logMutex);
+
+        int localOffset = GLOBAL_OFFSET;
+        char message[100];
+        sprintf(message, "FAIL: GET %s HTTP --- response 403\n========\n",
                  fileName);
-        /* printLog(message); */
-        free(message);
+        GLOBAL_OFFSET+= strlen(message);
+
+        sem_post(&logMutex);
+
+        localOffset+=printLog(message,localOffset);
       }
     }
 
@@ -275,10 +287,16 @@ void processGet(char fileName[], int socket) {
   int size = st.st_size;
 
   if (LOGFILE) {
-    char *message;
-    asprintf(&message, "GET %s length 0\n========\n", fileName);
-    /* printLog(message); */
-    free(message);
+    sem_wait(&logMutex);
+
+    int localOffset = GLOBAL_OFFSET;
+    char message[100];
+    sprintf(message, "GET %s length 0\n========\n", fileName);
+    GLOBAL_OFFSET+= strlen(message);
+
+    sem_post(&logMutex);
+
+    localOffset+= printLog(message, localOffset);
   }
 
   char str[1024];
@@ -294,18 +312,25 @@ void processGet(char fileName[], int socket) {
   close(fd);
 }
 
-void processPut(char fileName[], int socket, int size, int localOffset) {
+void processPut(char fileName[], int socket, int size){
   int fd;
   char buffer[32];
   fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
 
   if (fd == -1) {
     if (LOGFILE) {
-      char *message;
-      asprintf(&message, "FAIL: PUT %s HTTP --- response 403\n========\n",
-               fileName);
-      /* printLog(message); */
-      free(message);
+        sem_wait(&logMutex);
+
+        int localOffset = GLOBAL_OFFSET;
+        char message[100];
+        sprintf(message, "FAIL: PUT %s HTTP --- response 403\n========\n",
+                fileName);
+        GLOBAL_OFFSET+= strlen(message);
+
+        sem_post(&logMutex);
+
+        localOffset+= printLog(message, localOffset);
+        printLog(message,localOffset);
     }
     // file is forbidden
     send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
@@ -329,16 +354,18 @@ void processPut(char fileName[], int socket, int size, int localOffset) {
     int address = 0;
     int length = 0;
     uint8_t buffer_log[100];
+    char target[100];
 
-    char *message = (char *)malloc(100);
-    
-    asprintf(&message, "PUT %s length %d\n", fileName, size);
-    localOffset+= printLog(message, localOffset);
+    length += sprintf(target + length, "PUT %s length %d\n", fileName, size);
+    sem_wait(&logMutex);
 
-    free(message);
+    int localOffset = GLOBAL_OFFSET;
+    int numLines = size/ 20 + (size% 20 != 0);
+    GLOBAL_OFFSET += length + (9 * numLines) + (size * 3) + 9;
+
+    sem_post(&logMutex);
     
     while (int k = read(fd, buffer_log, 20)) {
-      char *target = (char *)malloc(100);
       length += sprintf(target + length, "%08d ", address);
 
       for (int j = 0; j < k; j++) {
@@ -349,27 +376,23 @@ void processPut(char fileName[], int socket, int size, int localOffset) {
       length += sprintf(target + length, "\n");
 
       localOffset += printLog(target, localOffset);
-      free(target);
+
       length = 0;
       address += 20;
     }
-
         
     close(fd);
-    char *buff = new char;
+    char buff[20];
     strcpy(buff, "========\n");   
     localOffset+=printLog(buff, localOffset);
-    free(buff);
   }
 
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
 }
 
-
 int printLog(char message[], int localOffset) {
   int lineLength = strlen(message);
-  localOffset+= lineLength;
   pwrite(FD_LOG, message, lineLength, localOffset);
-  return localOffset;
+  return lineLength;
 }
