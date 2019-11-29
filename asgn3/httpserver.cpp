@@ -1,17 +1,15 @@
 /*********************************************
  * Name: Alan Caro
  * ID: 1650010
- * Assignment Name:  Assignment 2
+ * Assignment Name:  Assignment 3
  **********************************************/
 
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <list>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <pthread.h>
-#include <queue>
-#include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,18 +18,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-pthread_t *THREADS;
-std::queue<int> MYQUEUE;
-
-sem_t full;
-sem_t empty;
-sem_t logMutex;
-
 char *LOGFILE;
-int GLOBAL_OFFSET = 0;
+bool ISCACHING = 0;
 int FD_LOG = 0;
-
-int printLog(char message[], int localOffset);
+void printLog(char message[]);
 
 // HTTP Errror Codes
 const char errorCodes[4][70] = {
@@ -43,27 +33,109 @@ const char errorCodes[4][70] = {
 // Checks if file name is valid
 int isValidName(char fileName[]);
 
-void *start(void *);
-
 // Sends requests to processPut, processGet otherwise error
 void processOneRequest(int socket);
 
 void processPut(char fileName[], int socket, int size);
 void processGet(char fileName[], int socket);
 
+struct file {
+  char *name;
+  char *contents;
+  bool isDirty;
+  int size;
+};
+
+class Cache {
+public:
+  void insert(file thisFile);
+  void display();
+  bool hasFile(char *name);
+  void setDirty(char *name, int socket, int size);
+  void remove();
+
+private:
+  std::list<file> files;
+};
+
+Cache CACHE;
+
+void Cache::setDirty(char *name, int socket, int size) {
+  for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
+    if (strcmp((it)->name, name) == 0) {
+      (it)->isDirty = 1;
+      char *buffer = new char;
+      char *result = (char *)malloc(size + 1);
+      int length = 0;
+      int i = 0;
+
+      while (i != size && read(socket, buffer, 1)) {
+        length += sprintf(result + length, "%s", buffer);
+        i++;
+      }
+
+      (it)->contents = (char *)realloc((it)->contents, length);
+      strcpy((it)->contents, result);
+      (it)->size = size;
+      /* free(result); */
+      free(buffer);
+    }
+  }
+}
+
+void Cache::remove() {
+  file frontFile = files.front();
+
+  if (frontFile.isDirty) {
+    int fd = open(frontFile.name, O_CREAT | O_RDWR | O_TRUNC, 0644);
+    write(fd, frontFile.contents, strlen(frontFile.contents));
+    files.pop_front();
+    close(fd);
+  } else {
+    files.pop_front();
+  }
+}
+
+void Cache::insert(file thisFile) {
+  thisFile.isDirty = 0;
+
+  if (files.size() == 4) {
+    remove();
+    files.push_back(thisFile);
+  } else {
+    files.push_back(thisFile);
+  }
+}
+
+void Cache::display() {
+  for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
+    printf("%s %s", (it)->name, (it)->contents);
+  }
+
+  printf("\n");
+}
+
+bool Cache::hasFile(char *name) {
+  for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
+    if (strcmp((it)->name, name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int main(int argc, char **argv) {
   char *hostname;
   char port[20];
-  int N = 4;
   int option;
 
-  while ((option = getopt(argc, argv, "N:l:")) != -1) {
+  while ((option = getopt(argc, argv, "l:c:")) != -1) {
     switch (option) {
-    case 'N':
-      N = atoi(optarg);
-      break;
     case 'l':
       LOGFILE = optarg;
+      break;
+    case 'c':
+      ISCACHING = 1;
       break;
     case ':':
       printf("option needs a value\n");
@@ -79,16 +151,6 @@ int main(int argc, char **argv) {
 
   if (LOGFILE)
     FD_LOG = open(LOGFILE, O_CREAT | O_RDWR | O_TRUNC, 0644);
-
-  THREADS = new pthread_t[N];
-
-  sem_init(&logMutex, 0, 1);
-  sem_init(&full, 0, 0);
-  sem_init(&empty, 0, N);
-
-  for (int i = 0; i < N; i++) {
-    pthread_create(&THREADS[i], NULL, start, NULL);
-  }
 
   // start of code obtained from Ethan Miller's Started Code
   struct addrinfo *addrs, hints = {};
@@ -106,27 +168,11 @@ int main(int argc, char **argv) {
 
   while (true) {
     int client_socket = accept(main_socket, NULL, NULL);
-    sem_wait(&empty);
-
-    MYQUEUE.push(client_socket);
-
-    sem_post(&full);
+    processOneRequest(client_socket);
+    CACHE.display();
   }
 
   return 0;
-}
-
-void *start(void *) {
-  while (true) {
-    sem_wait(&full);
-
-    int client_socket = MYQUEUE.front();
-    MYQUEUE.pop();
-
-    sem_post(&empty);
-
-    processOneRequest(client_socket);
-  }
 }
 
 void processOneRequest(int socket) {
@@ -146,16 +192,10 @@ void processOneRequest(int socket) {
   // invalid file name
   if (isValidName(fileName) == -1) {
     if (LOGFILE) {
-        sem_wait(&logMutex);
-
-        int localOffset = GLOBAL_OFFSET;
-        char message[100];
-        sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n",
-                request, fileName);
-        GLOBAL_OFFSET+= strlen(message);
-
-        sem_post(&logMutex);
-        printLog(message, localOffset);
+      char message[100];
+      sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n", request,
+              fileName);
+      printLog(message);
     }
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
     return;
@@ -187,20 +227,14 @@ void processOneRequest(int socket) {
       // set size -1 since no content-length was found
       i = -1;
 
-
     processPut(fileName, socket, i);
   } else {
     if (LOGFILE) {
-        sem_wait(&logMutex);
+      char message[100];
+      sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n", request,
+              fileName);
 
-        int localOffset = GLOBAL_OFFSET;
-        char message[100];
-        sprintf(message, "FAIL: %s %s HTTP --- response 400\n========\n", 
-                request, fileName);
-        GLOBAL_OFFSET+= strlen(message);
-
-        sem_post(&logMutex);
-        printLog(message, localOffset);
+      printLog(message);
     }
     send(socket, errorCodes[0], strlen(errorCodes[0]), 0);
   }
@@ -233,7 +267,7 @@ int isValidName(char fileName[]) {
   return 0;
 }
 
-void processGet(char fileName[], int socket){
+void processGet(char fileName[], int socket) {
   int fd;
   char buffer[32];
 
@@ -243,34 +277,22 @@ void processGet(char fileName[], int socket){
     // file was not found
     if (access(fileName, F_OK) == -1) {
       if (LOGFILE) {
-        sem_wait(&logMutex);
-
-        int localOffset = GLOBAL_OFFSET;
         char message[100];
         sprintf(message, "FAIL: GET %s HTTP --- response 404\n========\n",
-                 fileName);
-        GLOBAL_OFFSET+= strlen(message);
+                fileName);
 
-        sem_post(&logMutex);
-
-        localOffset+=printLog(message,localOffset);
+        printLog(message);
       }
 
       send(socket, errorCodes[2], strlen(errorCodes[2]), 0);
     } else {
       // no read permission
       if (LOGFILE) {
-        sem_wait(&logMutex);
-
-        int localOffset = GLOBAL_OFFSET;
         char message[100];
         sprintf(message, "FAIL: GET %s HTTP --- response 403\n========\n",
-                 fileName);
-        GLOBAL_OFFSET+= strlen(message);
+                fileName);
 
-        sem_post(&logMutex);
-
-        localOffset+=printLog(message,localOffset);
+        printLog(message);
       }
     }
 
@@ -287,16 +309,10 @@ void processGet(char fileName[], int socket){
   int size = st.st_size;
 
   if (LOGFILE) {
-    sem_wait(&logMutex);
-
-    int localOffset = GLOBAL_OFFSET;
     char message[100];
     sprintf(message, "GET %s length 0\n========\n", fileName);
-    GLOBAL_OFFSET+= strlen(message);
 
-    sem_post(&logMutex);
-
-    localOffset+= printLog(message, localOffset);
+    printLog(message);
   }
 
   char str[1024];
@@ -312,44 +328,60 @@ void processGet(char fileName[], int socket){
   close(fd);
 }
 
-void processPut(char fileName[], int socket, int size){
+void processPut(char fileName[], int socket, int size) {
   int fd;
-  char buffer[32];
-  fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
+  char *buffer = new char;
 
-  if (fd == -1) {
-    if (LOGFILE) {
-        sem_wait(&logMutex);
+  /* if (fd == -1) { */
+  /*   if (LOGFILE) { */
+  /*     char message[100]; */
+  /*     sprintf(message, "FAIL: PUT %s HTTP --- response 403\n========\n", */
+  /*             fileName); */
 
-        int localOffset = GLOBAL_OFFSET;
-        char message[100];
-        sprintf(message, "FAIL: PUT %s HTTP --- response 403\n========\n",
-                fileName);
-        GLOBAL_OFFSET+= strlen(message);
+  /*     printLog(message); */
+  /*   } */
+  /*   // file is forbidden */
+  /*   send(socket, errorCodes[1], strlen(errorCodes[1]), 0); */
+  /*   return; */
+  /* } */
 
-        sem_post(&logMutex);
+  if (CACHE.hasFile(fileName) == false) {
+    // put files on disk
+    int i = 0;
+    fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
 
-        localOffset+= printLog(message, localOffset);
-        printLog(message,localOffset);
+    // write contents until size specified and while
+    // there is still content
+    while (i != size && read(socket, buffer, 1)) {
+      write(fd, buffer, 1);
+      i++;
     }
-    // file is forbidden
-    send(socket, errorCodes[1], strlen(errorCodes[1]), 0);
-    return;
+
+    close(fd);
+
+    int _length = 0;
+    char *result = (char *)malloc(size);
+    memset(buffer, 0, 32);
+
+    // bringing from disk and putting it on the cache
+    fd = open(fileName, O_RDWR);
+    while (read(fd, buffer, 1)) {
+      _length += sprintf(result + _length, "%s", buffer);
+    }
+    file f;
+
+    f.name = (char *)malloc(strlen(fileName));
+    f.contents = (char *)malloc(_length);
+    f.size = size;
+
+    strcpy(f.contents, result);
+    strcpy(f.name, fileName);
+    CACHE.insert(f);
+  } else {
+    CACHE.setDirty(fileName, socket, size);
   }
 
-  int i = 0;
-
-  // write contents until size specified and while
-  // there is still content
-  while (i != size && read(socket, buffer, 1)) {
-    write(fd, buffer, 1);
-
-    i++;
-  }
-
-  close(fd);
-
-  if (LOGFILE) {
+  if (LOGFILE && !ISCACHING) {
     fd = open(fileName, O_RDWR);
     int address = 0;
     int length = 0;
@@ -357,14 +389,7 @@ void processPut(char fileName[], int socket, int size){
     char target[100];
 
     length += sprintf(target + length, "PUT %s length %d\n", fileName, size);
-    sem_wait(&logMutex);
 
-    int localOffset = GLOBAL_OFFSET;
-    int numLines = size/ 20 + (size% 20 != 0);
-    GLOBAL_OFFSET += strlen(target) + (10 * numLines) + (size * 3) + 9;
-
-    sem_post(&logMutex);
-    
     while (int k = read(fd, buffer_log, 20)) {
       length += sprintf(target + length, "%08d ", address);
 
@@ -375,24 +400,25 @@ void processPut(char fileName[], int socket, int size){
 
       length += sprintf(target + length, "\n");
 
-      localOffset += printLog(target, localOffset);
+      printLog(target);
 
       length = 0;
       address += 20;
     }
-        
+
     close(fd);
     char buff[20];
-    strcpy(buff, "========\n");   
-    localOffset+=printLog(buff, localOffset);
+    strcpy(buff, "========\n");
+    printLog(buff);
+  } else {
   }
 
+  free(buffer);
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
 }
 
-int printLog(char message[], int localOffset) {
+void printLog(char message[]) {
   int lineLength = strlen(message);
-  pwrite(FD_LOG, message, lineLength, localOffset);
-  return lineLength;
+  write(FD_LOG, message, lineLength);
 }

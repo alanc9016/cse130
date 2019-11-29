@@ -49,7 +49,7 @@ OBJECTS=$(SOURCES:.cpp=.o)
 DEPS=$(SOURCES:.cpp=.d)
 
 # We're using clang as our C++ compiler.
-CXX=clang++ -pthread
+CXX=clang++
 
 # provide a default target, with the standard name 'all'.
 all: $(TARGET)
