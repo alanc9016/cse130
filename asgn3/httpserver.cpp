@@ -78,13 +78,12 @@ void Cache::setDirty(char *name, int socket, int size) {
   for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
     if (strcmp((it)->name, name) == 0) {
       (it)->isDirty = 1;
-      char *buffer = new char;
+      char buffer[32];
+      memset(buffer, 0, 32);
       std::string result;
       int i = 0;
 
       while (i != size && read(socket, buffer, 1)) {
-        /* printf("%s", buffer); */
-
         std::string str(buffer);
         result.append(buffer);
         i++;
@@ -92,9 +91,7 @@ void Cache::setDirty(char *name, int socket, int size) {
 
       
       (it)->contents = result;
-      /* printf("contents: %s", (it)->contents.c_str()); */
       (it)->size = size;
-      free(buffer);
     }
   }
 }
@@ -442,6 +439,7 @@ void processPut(char fileName[], int socket, int size) {
       std::string str(buffer);
       f.contents.append(buffer);
     }
+    free(buffer);
     CACHE.insert(f);
   } else {
     CACHE.setDirty(fileName, socket, size);
