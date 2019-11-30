@@ -4,6 +4,7 @@
  * Assignment Name:  Assignment 3
  **********************************************/
 
+#include <iostream>
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <fcntl.h>
@@ -41,7 +42,7 @@ void processGet(char fileName[], int socket);
 
 struct file {
   char *name;
-  char *contents;
+  std::string contents;
   bool isDirty;
   int size;
 };
@@ -49,7 +50,7 @@ struct file {
 class Cache {
 public:
   void insert(file thisFile);
-  void display();
+  void display(char *name);
   bool hasFile(char *name);
   void setDirty(char *name, int socket, int size);
   void remove();
@@ -65,19 +66,17 @@ void Cache::setDirty(char *name, int socket, int size) {
     if (strcmp((it)->name, name) == 0) {
       (it)->isDirty = 1;
       char *buffer = new char;
-      char *result = (char *)malloc(size + 1);
-      int length = 0;
+      std::string result;
       int i = 0;
 
       while (i != size && read(socket, buffer, 1)) {
-        length += sprintf(result + length, "%s", buffer);
+        std::string str(buffer);
+        result.append(buffer);
         i++;
       }
 
-      (it)->contents = (char *)realloc((it)->contents, length);
-      strcpy((it)->contents, result);
+      (it)->contents = result;
       (it)->size = size;
-      /* free(result); */
       free(buffer);
     }
   }
@@ -88,7 +87,7 @@ void Cache::remove() {
 
   if (frontFile.isDirty) {
     int fd = open(frontFile.name, O_CREAT | O_RDWR | O_TRUNC, 0644);
-    write(fd, frontFile.contents, strlen(frontFile.contents));
+    write(fd, frontFile.contents.c_str(), frontFile.contents.size());
     files.pop_front();
     close(fd);
   } else {
@@ -107,12 +106,36 @@ void Cache::insert(file thisFile) {
   }
 }
 
-void Cache::display() {
+void Cache::display(char* name) {
   for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
-    printf("%s %s", (it)->name, (it)->contents);
-  }
+      if (strcmp((it)->name, name) == 0) {
+        int address = 0;
+        int length = 0;
+        char target[100];
+        const char* character = (it)->contents.c_str();
+        int i =0;
+        while(*character){
+            if(i % 20 == 0){
+                if(i != 0){
+                    length += sprintf(target + length, "\n"); 
+                    printLog(target);
+                    length = 0;
+                }
+                length += sprintf(target + length, "%08d ", address);
+                address+=20;
+            }
+            length+= sprintf(target + length, "%02x ", *character);
+            character++;
+            i++;
+        }
 
-  printf("\n");
+        printLog(target);
+        char buff[20];
+        strcpy(buff, "\n========\n");
+        printLog(buff);
+        break;
+      }
+  }
 }
 
 bool Cache::hasFile(char *name) {
@@ -129,7 +152,7 @@ int main(int argc, char **argv) {
   char port[20];
   int option;
 
-  while ((option = getopt(argc, argv, "l:c:")) != -1) {
+  while ((option = getopt(argc, argv, "l:c")) != -1) {
     switch (option) {
     case 'l':
       LOGFILE = optarg;
@@ -169,7 +192,6 @@ int main(int argc, char **argv) {
   while (true) {
     int client_socket = accept(main_socket, NULL, NULL);
     processOneRequest(client_socket);
-    CACHE.display();
   }
 
   return 0;
@@ -345,7 +367,9 @@ void processPut(char fileName[], int socket, int size) {
   /*   return; */
   /* } */
 
-  if (CACHE.hasFile(fileName) == false) {
+  bool fileInCache = CACHE.hasFile(fileName);
+
+  if (!fileInCache) {
     // put files on disk
     int i = 0;
     fd = open(fileName, O_CREAT | O_RDWR | O_TRUNC, 0644);
@@ -359,61 +383,64 @@ void processPut(char fileName[], int socket, int size) {
 
     close(fd);
 
-    int _length = 0;
-    char *result = (char *)malloc(size);
-    memset(buffer, 0, 32);
+    std::string result;
+    /* memset(buffer, 0, 32); */
+    file f;
+
+    f.name = (char *)malloc(strlen(fileName));
+    f.size = size;
+
+    strcpy(f.name, fileName);
 
     // bringing from disk and putting it on the cache
     fd = open(fileName, O_RDWR);
     while (read(fd, buffer, 1)) {
-      _length += sprintf(result + _length, "%s", buffer);
+       std::string str(buffer);
+       f.contents.append(buffer);
     }
-    file f;
-
-    f.name = (char *)malloc(strlen(fileName));
-    f.contents = (char *)malloc(_length);
-    f.size = size;
-
-    strcpy(f.contents, result);
-    strcpy(f.name, fileName);
     CACHE.insert(f);
   } else {
     CACHE.setDirty(fileName, socket, size);
   }
 
-  if (LOGFILE && !ISCACHING) {
+  if (LOGFILE && ISCACHING) {
     fd = open(fileName, O_RDWR);
     int address = 0;
     int length = 0;
     uint8_t buffer_log[100];
     char target[100];
 
-    length += sprintf(target + length, "PUT %s length %d\n", fileName, size);
-
-    while (int k = read(fd, buffer_log, 20)) {
-      length += sprintf(target + length, "%08d ", address);
-
-      for (int j = 0; j < k; j++) {
-        length +=
-            sprintf(target + length, "%02x ", (unsigned int)buffer_log[j]);
-      }
-
-      length += sprintf(target + length, "\n");
-
+    if (fileInCache) {
+      length += sprintf(target + length, "PUT %s length %d [was in cache]\n",
+                        fileName, size);
       printLog(target);
+      CACHE.display(fileName);
+    } else {
+      length += sprintf(target + length, "PUT %s length %d [was not in cache]\n",
+                        fileName, size);
 
-      length = 0;
-      address += 20;
+      while (int k = read(fd, buffer_log, 20)) {
+        length += sprintf(target + length, "%08d ", address);
+
+        for (int j = 0; j < k; j++) {
+          length +=
+              sprintf(target + length, "%02x ", (unsigned int)buffer_log[j]);
+        }
+
+        length += sprintf(target + length, "\n");
+
+        printLog(target);
+        length = 0;
+        address += 20;
+      }
+      close(fd);
+      char buff[20];
+      strcpy(buff, "========\n");
+      printLog(buff);
     }
-
-    close(fd);
-    char buff[20];
-    strcpy(buff, "========\n");
-    printLog(buff);
   } else {
   }
 
-  free(buffer);
   send(socket, "HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n",
        strlen("HTTP/1.1 201 Created \r\nContent-Length: 0\r\n\r\n"), 0);
 }
