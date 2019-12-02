@@ -78,17 +78,15 @@ void Cache::setDirty(char *name, int socket, int size) {
   for (std::list<file>::iterator it = files.begin(); it != files.end(); ++it) {
     if (strcmp((it)->name, name) == 0) {
       (it)->isDirty = 1;
-      char buffer[32];
-      memset(buffer, 0, 32);
+      uint8_t buffer[100];
+      memset(buffer, 0, 100);
       std::string result;
       int i = 0;
 
       while (i != size && read(socket, buffer, 1)) {
-        std::string str(buffer);
-        result.append(buffer);
+        result.append(buffer, buffer+1);
         i++;
       }
-
       
       (it)->contents = result;
       (it)->size = size;
@@ -138,7 +136,7 @@ void Cache::display(char *name) {
           length += sprintf(target + length, "%08d ", address);
           address += 20;
         }
-        length += sprintf(target + length, "%02x ", *it1);
+        length += sprintf(target + length, "%02x ", (unsigned char)*it1);
         i++;
         it1++;
       }
@@ -439,7 +437,6 @@ void processPut(char fileName[], int socket, int size) {
       std::string str(buffer);
       f.contents.append(buffer);
     }
-    free(buffer);
     CACHE.insert(f);
   } else {
     CACHE.setDirty(fileName, socket, size);
